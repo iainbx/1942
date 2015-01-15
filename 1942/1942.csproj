@@ -57,6 +57,7 @@
     <Reference Include="System.EnterpriseServices" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="assets\160.mp3" />
     <Content Include="assets\enemy-fire.ogg" />
     <Content Include="assets\explosion.ogg" />
     <Content Include="assets\player-explosion.ogg" />
