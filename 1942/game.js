@@ -30,6 +30,153 @@ BasicGame.Game.prototype = {
         }
     },
 
+    damageEnemy: function (enemy, damage) {
+        enemy.damage(damage);
+        if (enemy.alive) {
+            enemy.play('hit');
+        }
+        else {
+            this.explode(enemy);
+            this.explosionSFX.play();
+            this.spawnPowerUp(enemy);
+            this.updateScore(enemy.reward);
+            // We check the sprite key (e.g. 'greenEnemy') to see if the sprite is a boss
+            // For full games, it would be better to set flags on the sprites themselves
+            if (enemy.key === 'boss') {
+                this.enemyPool.destroy();
+                this.shooterPool.destroy();
+                this.bossPool.destroy();
+                this.enemyBulletPool.destroy();
+                this.displayEnd(true);
+            }
+        }
+    },
+
+    displayEnd: function (win) {
+        // you can't win and lose at the same time
+        if (this.endText && this.endText.exists) {
+            return;
+        }
+
+        var msg = win ? 'You Win!!!' : 'Game Over!';
+        this.endText = this.add.text(
+        this.game.width / 2, this.game.height / 2 - 60, msg,
+        { font: '72px serif', fill: '#fff' }
+        );
+        this.endText.anchor.setTo(0.5, 0);
+        this.showReturn = this.time.now + BasicGame.RETURN_MESSAGE_DELAY;
+    },
+
+    enemyFire: function () {
+        this.shooterPool.forEachAlive(function (enemy) {
+            if (this.time.now > enemy.nextShotAt && this.enemyBulletPool.countDead() > 0) {
+                var bullet = this.enemyBulletPool.getFirstExists(false);
+                bullet.reset(enemy.x, enemy.y);
+                this.physics.arcade.moveToObject(
+                  bullet, this.player, BasicGame.ENEMY_BULLET_VELOCITY
+                );
+                enemy.nextShotAt = this.time.now + BasicGame.SHOOTER_SHOT_DELAY;
+                this.enemyFireSFX.play();
+            }
+        }, this);
+
+        if (this.bossApproaching === false && this.boss.alive &&
+               this.boss.nextShotAt < this.time.now &&
+               this.enemyBulletPool.countDead() >= 10) {
+
+            this.boss.nextShotAt = this.time.now + BasicGame.BOSS_SHOT_DELAY;
+            this.enemyFireSFX.play();
+
+            for (var i = 0; i < 5; i++) {
+                // process 2 bullets at a time
+                var leftBullet = this.enemyBulletPool.getFirstExists(false);
+                leftBullet.reset(this.boss.x - 10 - i * 10, this.boss.y + 20);
+                var rightBullet = this.enemyBulletPool.getFirstExists(false);
+                rightBullet.reset(this.boss.x + 10 + i * 10, this.boss.y + 20);
+
+                if (this.boss.health > BasicGame.BOSS_HEALTH / 2) {
+                    // aim directly at the player
+                    this.physics.arcade.moveToObject(
+                      leftBullet, this.player, BasicGame.ENEMY_BULLET_VELOCITY
+                    );
+                    this.physics.arcade.moveToObject(
+                      rightBullet, this.player, BasicGame.ENEMY_BULLET_VELOCITY
+                    );
+                } else {
+                    // aim slightly off center of the player
+                    this.physics.arcade.moveToXY(
+                      leftBullet, this.player.x - i * 100, this.player.y,
+                      BasicGame.ENEMY_BULLET_VELOCITY
+                    );
+                    this.physics.arcade.moveToXY(
+                      rightBullet, this.player.x + i * 100, this.player.y,
+                      BasicGame.ENEMY_BULLET_VELOCITY
+                    );
+                }
+            }
+        }
+    },
+
+    enemyHit: function (bullet, enemy) {
+        bullet.kill();
+        this.damageEnemy(enemy, BasicGame.BULLET_DAMAGE);
+    },
+
+    explode: function (sprite) {
+        if (this.explosionPool.countDead() === 0) {
+            return;
+        }
+        var explosion = this.explosionPool.getFirstExists(false);
+        explosion.reset(sprite.x, sprite.y);
+        explosion.play('boom', 15, false, true);
+        // add the original sprite's velocity to the explosion
+        explosion.body.velocity.x = sprite.body.velocity.x;
+        explosion.body.velocity.y = sprite.body.velocity.y;
+    },
+
+    fire: function () {
+        if (!this.player.alive || this.nextShotAt > this.time.now) {
+            return;
+        }
+
+        this.nextShotAt = this.time.now + this.shotDelay;
+        this.playerFireSFX.play();
+
+
+        var bullet;
+        if (this.weaponLevel === 0) {
+            if (this.bulletPool.countDead() === 0) {
+                return;
+            }
+            bullet = this.bulletPool.getFirstExists(false);
+            bullet.reset(this.player.x, this.player.y - 20);
+            bullet.body.velocity.y = -BasicGame.BULLET_VELOCITY;
+        }
+        else {
+            if (this.bulletPool.countDead() < this.weaponLevel * 2) {
+                return;
+            }
+            for (var i = 0; i < this.weaponLevel; i++) {
+                bullet = this.bulletPool.getFirstExists(false);
+                // spawn left bullet slightly left off center
+                bullet.reset(this.player.x - (10 + i * 6), this.player.y - 20);
+                // the left bullets spread from -95 degrees to -135 degrees
+                this.physics.arcade.velocityFromAngle(
+                  -95 - i * 10, BasicGame.BULLET_VELOCITY, bullet.body.velocity
+                );
+
+                bullet = this.bulletPool.getFirstExists(false);
+                // spawn right bullet slightly right off center
+                bullet.reset(this.player.x + (10 + i * 6), this.player.y - 20);
+                // the right bullets spread from -85 degrees to -45
+                this.physics.arcade.velocityFromAngle(
+                  -85 + i * 10, BasicGame.BULLET_VELOCITY, bullet.body.velocity
+                );
+            }
+        }
+
+    },
+
     playerPowerUp: function (player, powerUp) {
         this.updateScore(powerUp.reward);
         powerUp.kill();
@@ -38,47 +185,6 @@ BasicGame.Game.prototype = {
         }
     },
 
-     spawnEnemies: function () {
-        if (this.nextEnemyAt < this.time.now && this.enemyPool.countDead() > 0) {
-            this.nextEnemyAt = this.time.now + this.enemyDelay;
-            var enemy = this.enemyPool.getFirstExists(false);
-            // spawn at a random location top of the screen
-            enemy.reset(this.rnd.integerInRange(20, this.game.width - 20), 0, BasicGame.ENEMY_HEALTH);
-            // also randomize the speed
-            enemy.body.velocity.y = this.rnd.integerInRange(BasicGame.ENEMY_MIN_Y_VELOCITY, BasicGame.ENEMY_MAX_Y_VELOCITY);
-            enemy.play('fly');
-        }
-
-        if (this.nextShooterAt < this.time.now && this.shooterPool.countDead() > 0) {
-            this.nextShooterAt = this.time.now + this.shooterDelay;
-            var shooter = this.shooterPool.getFirstExists(false);
-
-            // spawn at a random location at the top  
-            shooter.reset(
-              this.rnd.integerInRange(20, this.game.width - 20), 0,
-              BasicGame.SHOOTER_HEALTH
-            );
-
-            // choose a random target location at the bottom
-            var target = this.rnd.integerInRange(20, this.game.width - 20);
-
-            // move to target and rotate the sprite accordingly  
-            shooter.rotation = this.physics.arcade.moveToXY(
-              shooter, target, this.game.height,
-              this.rnd.integerInRange(
-                BasicGame.SHOOTER_MIN_VELOCITY, BasicGame.SHOOTER_MAX_VELOCITY
-              )
-            ) - Math.PI / 2;
-
-            shooter.play('fly');
-
-            // each shooter has their own shot timer 
-            shooter.nextShotAt = 0;
-        }
-
-    },
-
-  
     processPlayerInput: function () {
         this.player.body.velocity.x = 0;
         this.player.body.velocity.y = 0;
@@ -137,104 +243,6 @@ BasicGame.Game.prototype = {
 
     },
 
-    enemyFire: function () {
-        this.shooterPool.forEachAlive(function (enemy) {
-            if (this.time.now > enemy.nextShotAt && this.enemyBulletPool.countDead() > 0) {
-                var bullet = this.enemyBulletPool.getFirstExists(false);
-                bullet.reset(enemy.x, enemy.y);
-                this.physics.arcade.moveToObject(
-                  bullet, this.player, BasicGame.ENEMY_BULLET_VELOCITY
-                );
-                enemy.nextShotAt = this.time.now + BasicGame.SHOOTER_SHOT_DELAY;
-                this.enemyFireSFX.play();
-            }
-        }, this);
-
-        if (this.bossApproaching === false && this.boss.alive &&
-               this.boss.nextShotAt < this.time.now &&
-               this.enemyBulletPool.countDead() >= 10) {
-
-            this.boss.nextShotAt = this.time.now + BasicGame.BOSS_SHOT_DELAY;
-            this.enemyFireSFX.play();
-
-            for (var i = 0; i < 5; i++) {
-                // process 2 bullets at a time
-                var leftBullet = this.enemyBulletPool.getFirstExists(false);
-                leftBullet.reset(this.boss.x - 10 - i * 10, this.boss.y + 20);
-                var rightBullet = this.enemyBulletPool.getFirstExists(false);
-                rightBullet.reset(this.boss.x + 10 + i * 10, this.boss.y + 20);
-
-                if (this.boss.health > BasicGame.BOSS_HEALTH / 2) {
-                    // aim directly at the player
-                    this.physics.arcade.moveToObject(
-                      leftBullet, this.player, BasicGame.ENEMY_BULLET_VELOCITY
-                    );
-                    this.physics.arcade.moveToObject(
-                      rightBullet, this.player, BasicGame.ENEMY_BULLET_VELOCITY
-                    );
-                } else {
-                    // aim slightly off center of the player
-                    this.physics.arcade.moveToXY(
-                      leftBullet, this.player.x - i * 100, this.player.y,
-                      BasicGame.ENEMY_BULLET_VELOCITY
-                    );
-                    this.physics.arcade.moveToXY(
-                      rightBullet, this.player.x + i * 100, this.player.y,
-                      BasicGame.ENEMY_BULLET_VELOCITY
-                    );
-                }
-            }
-        }
-    },
-
-    fire: function () {
-         if (!this.player.alive || this.nextShotAt > this.time.now) {
-             return;
-         }
-
-        this.nextShotAt = this.time.now + this.shotDelay;
-        this.playerFireSFX.play();
-
-
-        var bullet;
-        if (this.weaponLevel === 0) {
-            if (this.bulletPool.countDead() === 0) {
-                return;
-            }
-            bullet = this.bulletPool.getFirstExists(false);
-            bullet.reset(this.player.x, this.player.y - 20);
-            bullet.body.velocity.y = -BasicGame.BULLET_VELOCITY;
-        }
-        else {
-            if (this.bulletPool.countDead() < this.weaponLevel * 2) {
-                return;
-            }
-            for (var i = 0; i < this.weaponLevel; i++) {
-                bullet = this.bulletPool.getFirstExists(false);
-                // spawn left bullet slightly left off center
-                bullet.reset(this.player.x - (10 + i * 6), this.player.y - 20);
-                // the left bullets spread from -95 degrees to -135 degrees
-                this.physics.arcade.velocityFromAngle(
-                  -95 - i * 10, BasicGame.BULLET_VELOCITY, bullet.body.velocity
-                );
-
-                bullet = this.bulletPool.getFirstExists(false);
-                // spawn right bullet slightly right off center
-                bullet.reset(this.player.x + (10 + i * 6), this.player.y - 20);
-                // the right bullets spread from -85 degrees to -45
-                this.physics.arcade.velocityFromAngle(
-                  -85 + i * 10, BasicGame.BULLET_VELOCITY, bullet.body.velocity
-                );
-            }
-        }
-
-    },
-
-    enemyHit: function (bullet, enemy) {
-        bullet.kill();
-        this.damageEnemy(enemy, BasicGame.BULLET_DAMAGE);
-    },
-
     playerHit: function (player, enemy) {
         // check first if this.ghostUntil is not not undefined or null
         if (this.ghostUntil && this.ghostUntil > this.time.now) {
@@ -256,64 +264,6 @@ BasicGame.Game.prototype = {
             player.kill();
             this.displayEnd(false);
         }
-    },
-
-    damageEnemy: function (enemy, damage) {
-        enemy.damage(damage);
-        if (enemy.alive) {
-            enemy.play('hit');
-        }
-        else {
-            this.explode(enemy);
-            this.explosionSFX.play();
-            this.spawnPowerUp(enemy);
-            this.updateScore(enemy.reward);
-            // We check the sprite key (e.g. 'greenEnemy') to see if the sprite is a boss
-            // For full games, it would be better to set flags on the sprites themselves
-            if (enemy.key === 'boss') {
-                this.enemyPool.destroy();
-                this.shooterPool.destroy();
-                this.bossPool.destroy();
-                this.enemyBulletPool.destroy();
-                this.displayEnd(true);
-            }
-        }
-    },
-
-    updateScore: function (score) {
-        this.score += score;
-        this.scoreText.text = this.score;
-        // this approach prevents the boss from spawning again upon winning
-        if (this.score >= 20000 && this.bossPool.countDead() == 1) {
-            this.spawnBoss();
-        }
-    },
-
-    explode: function (sprite) {
-             if (this.explosionPool.countDead() === 0) {
-                   return;
-                 }
-             var explosion = this.explosionPool.getFirstExists(false);
-             explosion.reset(sprite.x, sprite.y);
-             explosion.play('boom', 15, false, true);
-             // add the original sprite's velocity to the explosion
-             explosion.body.velocity.x = sprite.body.velocity.x;
-             explosion.body.velocity.y = sprite.body.velocity.y;
-    },
-
-    displayEnd: function (win) {
-        // you can't win and lose at the same time
-        if (this.endText && this.endText.exists) {
-            return;
-        }
-
-        var msg = win ? 'You Win!!!' : 'Game Over!';
-        this.endText = this.add.text(
-        this.game.width / 2, this.game.height / 2 - 60, msg,
-        { font: '72px serif', fill: '#fff' }
-        );
-        this.endText.anchor.setTo(0.5, 0);
-        this.showReturn = this.time.now + BasicGame.RETURN_MESSAGE_DELAY;
     },
 
     setupAudio: function () {
@@ -511,6 +461,46 @@ BasicGame.Game.prototype = {
         this.boss.play('fly');
     },
 
+    spawnEnemies: function () {
+        if (this.nextEnemyAt < this.time.now && this.enemyPool.countDead() > 0) {
+            this.nextEnemyAt = this.time.now + this.enemyDelay;
+            var enemy = this.enemyPool.getFirstExists(false);
+            // spawn at a random location top of the screen
+            enemy.reset(this.rnd.integerInRange(20, this.game.width - 20), 0, BasicGame.ENEMY_HEALTH);
+            // also randomize the speed
+            enemy.body.velocity.y = this.rnd.integerInRange(BasicGame.ENEMY_MIN_Y_VELOCITY, BasicGame.ENEMY_MAX_Y_VELOCITY);
+            enemy.play('fly');
+        }
+
+        if (this.nextShooterAt < this.time.now && this.shooterPool.countDead() > 0) {
+            this.nextShooterAt = this.time.now + this.shooterDelay;
+            var shooter = this.shooterPool.getFirstExists(false);
+
+            // spawn at a random location at the top  
+            shooter.reset(
+              this.rnd.integerInRange(20, this.game.width - 20), 0,
+              BasicGame.SHOOTER_HEALTH
+            );
+
+            // choose a random target location at the bottom
+            var target = this.rnd.integerInRange(20, this.game.width - 20);
+
+            // move to target and rotate the sprite accordingly  
+            shooter.rotation = this.physics.arcade.moveToXY(
+              shooter, target, this.game.height,
+              this.rnd.integerInRange(
+                BasicGame.SHOOTER_MIN_VELOCITY, BasicGame.SHOOTER_MAX_VELOCITY
+              )
+            ) - Math.PI / 2;
+
+            shooter.play('fly');
+
+            // each shooter has their own shot timer 
+            shooter.nextShotAt = 0;
+        }
+
+    },
+
     spawnPowerUp: function (enemy) {
         if (this.powerUpPool.countDead() === 0 || this.weaponLevel === 5) {
             return;
@@ -529,6 +519,15 @@ BasicGame.Game.prototype = {
         this.enemyFire();
         this.processPlayerInput();
         this.processDelayedEffects();
+    },
+
+    updateScore: function (score) {
+        this.score += score;
+        this.scoreText.text = this.score;
+        // this approach prevents the boss from spawning again upon winning
+        if (this.score >= 20000 && this.bossPool.countDead() == 1) {
+            this.spawnBoss();
+        }
     },
 
     quitGame: function (pointer) {
