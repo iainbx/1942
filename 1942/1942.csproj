@@ -61,6 +61,7 @@
     <Content Include="assets\enemy-fire.ogg" />
     <Content Include="assets\explosion.ogg" />
     <Content Include="assets\player-explosion.ogg" />
+    <Content Include="assets\player-fire.mp3" />
     <Content Include="assets\player-fire.ogg" />
     <Content Include="assets\powerup.ogg" />
     <None Include="Properties\PublishProfiles\1942.pubxml" />
