@@ -98,6 +98,7 @@
     <Content Include="game.js" />
     <Content Include="index.html" />
     <Content Include="mainMenu.js" />
+    <Content Include="phaser-arcade-physics.js" />
     <Content Include="phaser-arcade-physics.min.js" />
     <Content Include="preloader.js" />
     <Content Include="Web.config" />

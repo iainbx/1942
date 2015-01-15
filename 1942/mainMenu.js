@@ -21,6 +21,8 @@ BasicGame.MainMenu.prototype = {
     this.add.text(this.game.width / 2, this.game.height - 90, "image assets Copyright (c) 2002 Ari Feldman", { font: "12px monospace", fill: "#fff", align: "center"}).anchor.setTo(0.5, 0.5);
     this.add.text(this.game.width / 2, this.game.height - 75, "sound assets Copyright (c) 2012 - 2013 Devin Watson", { font: "12px monospace", fill: "#fff", align: "center"}).anchor.setTo(0.5, 0.5);
 
+    this.music = this.sound.play('titleMusic');
+
   },
 
   update: function () {
@@ -35,7 +37,7 @@ BasicGame.MainMenu.prototype = {
   startGame: function (pointer) {
 
     //  Ok, the Play Button has been clicked or touched, so let's stop the music (otherwise it'll carry on playing)
-    // this.music.stop();
+    this.music.stop();
 
     //  And start the actual game
     this.state.start('Game');
